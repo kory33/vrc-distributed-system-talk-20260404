@@ -89,7 +89,7 @@ A specification is not merely the PDF or the wiki page or the requirements docum
 
 So the first thing I want you to unlearn is the idea that “specification” just means a human-written document passed from one person to another.
 
-It is the *standard* which an implementation is *expected to* meet. "Expected", by whom, you might ask, and that's the appropriate question. I had to say "expected to", because it is typically stakeholders who are holding such expectation. (Footnote: a point to ponder: Combined with the next point I am going to make, I think that the phrase Specification-Driven Development is (very) misguiding. We *should have been* specifying stuff from the beginning. There could be multiple arguments for and against this opinion, even if you insisted the word Specification to mean a form of expectations, and it could be worthwhile to stand still for a moment and think: *what are we trying to do, really?*)
+It is the *standard* an implementation is *expected to* meet. "Expected", by whom, you might ask, and that's the appropriate question. I had to say "expected to", because it is typically stakeholders who are holding such expectation.
 
 ## Specs as Things We (Software Engineers) Rely On
 
@@ -99,7 +99,7 @@ Now, if you are a software engineer, you *might* be thinking: "OK, but I am not 
 
 Imagine yourself writing a function (TODO: write a concrete function name here). You were most probably forced to writing that function because a "past you" had some expectation about what the function should do. Maybe you had an idea of how it should be used, or maybe you had a vague notion of what it should accomplish. That expectation can be considered a specification, and if you do not fulfill it, then you have failed to meet your own expectations.
 
-Shortly before the period of actually writing the function, you have been a stakeholder of the function. *More importantly*, *after* you have written the function, you *still are* (and likely will remain to be) a stakeholder of the function, because you will almost certainly use it yourself (if not, why have you written it?). (footnote: Recursive functions are interesting because they force you to be a user of the function specification *while writing the body of the function*. I've written about this on Twitter a while ago: https://x.com/Kory__3/status/1785847683238023279)
+Before you even start writing the function, you are already its stakeholder. *More importantly*, *after* you have written the function, you *still are* (and likely will remain to be) a stakeholder of the function, because you will almost certainly use it yourself (if not, why have you written it?). (footnote: Recursive functions are interesting because they force you to be a user of the function specification *while writing the body of the function*. I've written about this on Twitter a while ago: https://x.com/Kory__3/status/1785847683238023279)
 
 When you are about to use the function, you *expect* it to do something useful for you, and to be certain that your function is the right thing to use, you need to assume that the function meets its specification, and that that specification is the property you really need at that moment.
 
@@ -116,8 +116,8 @@ And that is why specifications matter. If outcomes are not specified in a way th
 ## Formal Specifications
 
 Specifications can often be *informal*, and this brings about two notable issues:
-- they may not be objective, in the sense that different people *may* have different interpretations of what the specification actually means (footnote: by *meaning of a specification*, I mean a boolean predicate that takes in an implementation and returns whether the implementation meets the specification),
-- and we cannot mechanically check whether an implementation meets the specification.
+- They may not be objective, in the sense that different people *may* have different interpretations of what the specification actually means. That is, two different people may judge (not by mistakes) differently whether a certain implementation meets the specification or not.
+- We cannot mechanically check whether an implementation meets the specification.
 
 The first problem creates a burden for both the user and the implementor of a system, and the latter problem reduces the confidence of the user that the implementation actually does what it is advertising it should do.
 
@@ -129,8 +129,7 @@ Note that I am not saying that *every* specification can be formalized. In fact,
 
 There are however specifications that can be written down with formal languages, and I will focus on those parts.
 
-The *model checking*, today's main topic, is one family of techniques for checking
-whether a formal specification holds in a formal model of the system.
+*Model checking*, which is today's main topic, is one family of techniques for checking whether a formal specification holds in a formal model of the system.
 
 ## Before “model checking”, what is a model?
 
@@ -232,7 +231,7 @@ Temporal operators talk about "future transitions" in the model. The main import
 
 ## What is model checking?
 
-Let's do a small recap. The Kripke Structure + CTL setup was this: given
+Let's do a small recap. So the Kripke-Structure-plus-CTL setup was this: given
 1. a model of the system, such as a Kripke structure,
 2. and a formula, such as a CTL formula,
 
