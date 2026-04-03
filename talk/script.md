@@ -1,7 +1,9 @@
 # モデル検査入門 - 分散アルゴリズムの正当性について
 
 Description: This is the initial draft script of the planned talk. I've fed all context I had in my mind to ChatGPT (through text + voice), made it write a draft following my rough plan and then heavily edited it to reach the current status.
+
 Language of this draft: English 
+
 Audience: a small distributed-systems meetup, likely including professional software engineers who may not necessarily be familar with mathematical logic or formal methods.
 
 ## Context and aims of the talk
