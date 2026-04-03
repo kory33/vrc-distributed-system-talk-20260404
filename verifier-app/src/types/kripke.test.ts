@@ -98,7 +98,7 @@ describe("parseKripkeStructureJson", () => {
 describe("parseKripkeStructureVisualizationJson", () => {
   it("accepts a valid structure with visualization params", () => {
     const result = parseKripkeStructureVisualizationJson({
-      kripke_structure: { nodeCount: 2, transitions: [[0, 1]], valuation: { p: [0] } },
+      kripkeStructure: { nodeCount: 2, transitions: [[0, 1]], valuation: { p: [0] } },
       visualizationParams: { colors: { p: "#ff0000" } },
     });
     expect(typeof result).not.toBe("string");
@@ -106,21 +106,21 @@ describe("parseKripkeStructureVisualizationJson", () => {
 
   it("accepts without visualizationParams", () => {
     const result = parseKripkeStructureVisualizationJson({
-      kripke_structure: { nodeCount: 1, transitions: [], valuation: {} },
+      kripkeStructure: { nodeCount: 1, transitions: [], valuation: {} },
     });
     expect(typeof result).not.toBe("string");
   });
 
-  it("rejects invalid kripke_structure", () => {
+  it("rejects invalid kripkeStructure", () => {
     const result = parseKripkeStructureVisualizationJson({
-      kripke_structure: { nodeCount: 0, transitions: [], valuation: {} },
+      kripkeStructure: { nodeCount: 0, transitions: [], valuation: {} },
     });
     expect(typeof result).toBe("string");
   });
 
   it("rejects non-string color values", () => {
     const result = parseKripkeStructureVisualizationJson({
-      kripke_structure: { nodeCount: 1, transitions: [], valuation: { p: [0] } },
+      kripkeStructure: { nodeCount: 1, transitions: [], valuation: { p: [0] } },
       visualizationParams: { colors: { p: 123 } },
     });
     expect(typeof result).toBe("string");
@@ -140,12 +140,12 @@ describe("parseKripkeStructureVisualizationJson", () => {
           transitions: fc.array(fc.tuple(arbIndex, arbIndex)),
           valuation: fc.dictionary(arbPropName, fc.array(arbIndex)),
         });
-        // Generate either { kripke_structure } or { kripke_structure, visualizationParams }
+        // Generate either { kripkeStructure } or { kripkeStructure, visualizationParams }
         // to test that omitted keys stay omitted
         return fc.oneof(
-          arbFrame.map((kripke_structure) => ({ kripke_structure })),
+          arbFrame.map((kripkeStructure) => ({ kripkeStructure })),
           fc.record({
-            kripke_structure: arbFrame,
+            kripkeStructure: arbFrame,
             visualizationParams: fc.record({
               colors: fc.dictionary(arbPropName, arbColor),
             }),

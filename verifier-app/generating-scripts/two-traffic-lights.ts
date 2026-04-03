@@ -17,7 +17,7 @@
 //   light2_green, light2_amber, light2_red
 
 type KripkeStructureVisualizationJson = {
-  kripke_structure: {
+  kripkeStructure: {
     nodeCount: number;
     transitions: [number, number][];
     valuation: Record<string, number[]>;
@@ -58,7 +58,7 @@ const valuation: Record<string, number[]> = {
 };
 
 const result: KripkeStructureVisualizationJson = {
-  kripke_structure: {
+  kripkeStructure: {
     nodeCount: stateCount,
     transitions,
     valuation,

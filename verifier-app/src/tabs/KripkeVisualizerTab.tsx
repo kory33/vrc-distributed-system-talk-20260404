@@ -29,7 +29,7 @@ export interface PropositionColoring {
 
 /**
  * Returns the ordered list of proposition colorings for all propositions
- * present in `viz.kripke_structure.valuation`, preserving their insertion order.
+ * present in `viz.kripkeStructure.valuation`, preserving their insertion order.
  *
  * Propositions with an explicit color in `viz.visualizationParams.colors`
  * use that color; others are assigned via golden-angle HSL palette.
@@ -39,7 +39,7 @@ function resolvePropositionColors(
 ): PropositionColoring[] {
   const explicitColors = viz.visualizationParams?.colors ?? {};
   let autoIndex = 0;
-  return Object.keys(viz.kripke_structure.valuation).map((name) => ({
+  return Object.keys(viz.kripkeStructure.valuation).map((name) => ({
     name,
     color: explicitColors[name] ?? autoColor(autoIndex++),
   }));
@@ -50,7 +50,7 @@ function resolvePropositionColors(
 // ---------------------------------------------------------------------------
 
 const SAMPLE_JSON: KripkeStructureVisualizationJson = {
-  kripke_structure: {
+  kripkeStructure: {
     nodeCount: 3,
     transitions: [
       [0, 1],
@@ -396,7 +396,7 @@ export function KripkeVisualizerTab() {
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const sheet = buildStylesheet(viz.kripke_structure, propositions, selectedProps);
+    const sheet = buildStylesheet(viz.kripkeStructure, propositions, selectedProps);
     cy.style(sheet as cytoscape.StylesheetCSS[]);
   }, [viz, selectedProps, propositions]);
 
@@ -430,7 +430,7 @@ export function KripkeVisualizerTab() {
     });
   }, []);
 
-  const stylesheet = buildStylesheet(viz.kripke_structure, propositions, selectedProps);
+  const stylesheet = buildStylesheet(viz.kripkeStructure, propositions, selectedProps);
 
   return (
     <div
@@ -504,7 +504,7 @@ export function KripkeVisualizerTab() {
           onToggle={handleToggle}
         />
         <CytoscapeComponent
-          elements={kripkeToElements(viz.kripke_structure, viz.visualizationParams?.nodePositions)}
+          elements={kripkeToElements(viz.kripkeStructure, viz.visualizationParams?.nodePositions)}
           style={{ width: "100%", height: "100%" }}
           layout={chooseLayout(viz.visualizationParams)}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}
@@ -513,7 +513,7 @@ export function KripkeVisualizerTab() {
         {tooltip && (
           <NodeTooltip
             tooltip={tooltip}
-            kripkeStructure={viz.kripke_structure}
+            kripkeStructure={viz.kripkeStructure}
             onMouseEnter={cancelHide}
             onMouseLeave={scheduleHide}
           />
