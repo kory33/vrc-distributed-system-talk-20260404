@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { KripkeVisualizerTab } from "./tabs/KripkeVisualizerTab";
+import { CTLModelCheckerTab } from "./tabs/CTLModelCheckerTab";
 import "./App.css";
 
 const TABS = [
   {
-    id: "kripke-visualizer",
-    label: "Kripke Structure Visualizer",
-    render: () => <KripkeVisualizerTab />,
+    id: "ctl-model-checker",
+    label: "CTL Model Checker",
+    render: () => <CTLModelCheckerTab />,
   },
 ] as const;
 
@@ -14,7 +14,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 /** Application shell. The active tab determines which experiment view is shown. */
 export function App() {
-  const [activeTabId, setActiveTabId] = useState<TabId>("kripke-visualizer");
+  const [activeTabId, setActiveTabId] = useState<TabId>("ctl-model-checker");
   const activeTab = TABS.find((tab) => tab.id === activeTabId)!;
 
   return (
