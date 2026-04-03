@@ -24,6 +24,7 @@ type KripkeStructureVisualizationJson = {
   };
   visualizationParams?: {
     colors?: Record<string, string>;
+    nodePositions?: [number, number][];
   };
 };
 
@@ -71,6 +72,15 @@ const result: KripkeStructureVisualizationJson = {
       light2_amber: "#d97706",
       light2_red: "#dc2626",
     },
+    // 正六角形配置（右手座標系; 状態0を右端、反時計回り）
+    // 半径 100 の正六角形の頂点
+    nodePositions: Array.from({ length: 6 }, (_, i) => {
+      const angle = (i * Math.PI * 2) / 6;
+      return [
+        Math.round(100 * Math.cos(angle)),
+        Math.round(100 * Math.sin(angle)),
+      ] as [number, number];
+    }),
   },
 };
 

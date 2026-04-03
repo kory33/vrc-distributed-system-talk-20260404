@@ -4,6 +4,7 @@ import type cytoscape from "cytoscape";
 import {
   type KripkeStructureJson,
   type KripkeStructureVisualizationJson,
+  type KripkeStructureVisualizationParamsJson,
   parseKripkeStructureVisualizationJson,
 } from "../types/kripke";
 
@@ -71,10 +72,25 @@ const SAMPLE_JSON: KripkeStructureVisualizationJson = {
 // Cytoscape helpers
 // ---------------------------------------------------------------------------
 
-const LAYOUT: cytoscape.LayoutOptions = {
+const AUTO_LAYOUT: cytoscape.LayoutOptions = {
   name: "cose",
   animate: false,
 };
+
+const PRESET_LAYOUT: cytoscape.LayoutOptions = {
+  name: "preset",
+  animate: false,
+};
+
+/**
+ * Returns the Cytoscape layout to use: `preset` when node positions are
+ * provided, `cose` (force-directed) otherwise.
+ */
+function chooseLayout(
+  params?: KripkeStructureVisualizationParamsJson,
+): cytoscape.LayoutOptions {
+  return params?.nodePositions ? PRESET_LAYOUT : AUTO_LAYOUT;
+}
 
 const INACTIVE_COLOR = "#616161";
 const FALSE_SECTOR_COLOR = "#2e2e2e";
@@ -88,6 +104,7 @@ const FALSE_SECTOR_COLOR = "#2e2e2e";
  */
 function kripkeToElements(
   kripkeStructure: KripkeStructureJson,
+  nodePositions?: readonly (readonly [number, number])[],
 ): cytoscape.ElementDefinition[] {
   const nodes: cytoscape.ElementDefinition[] = Array.from(
     { length: kripkeStructure.nodeCount },
@@ -97,6 +114,11 @@ function kripkeToElements(
         label: String(i),
         stateIndex: i,
       },
+      // Cytoscape uses a screen coordinate system (y increases downward),
+      // so we negate the y component of the right-handed input coordinates.
+      ...(nodePositions
+        ? { position: { x: nodePositions[i][0], y: -nodePositions[i][1] } }
+        : {}),
     }),
   );
 
@@ -482,9 +504,9 @@ export function KripkeVisualizerTab() {
           onToggle={handleToggle}
         />
         <CytoscapeComponent
-          elements={kripkeToElements(viz.kripke_structure)}
+          elements={kripkeToElements(viz.kripke_structure, viz.visualizationParams?.nodePositions)}
           style={{ width: "100%", height: "100%" }}
-          layout={LAYOUT}
+          layout={chooseLayout(viz.visualizationParams)}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}
           cy={handleCy}
         />

@@ -100,9 +100,16 @@ export function parseKripkeStructureJson(
  * - `colors`: optional mapping from proposition names to CSS color strings.
  *   Keys not present in the structure's valuation are ignored by the renderer.
  *   Color strings are passed directly to the renderer without further validation.
+ *
+ * - `nodePositions`: optional array of [x, y] pairs giving the position of
+ *   each state in a right-handed coordinate system (x increases rightward,
+ *   y increases upward). The array must have exactly `nodeCount` entries;
+ *   entry i gives the position of state i. Units are arbitrary and the
+ *   renderer will scale them to fit the viewport.
  */
 export interface KripkeStructureVisualizationParamsJson {
   readonly colors?: Readonly<Record<string, string>>;
+  readonly nodePositions?: readonly (readonly [number, number])[];
 }
 
 /**
@@ -140,6 +147,11 @@ export function parseKripkeStructureVisualizationJson(
       return "`visualizationParams` must be an object.";
     }
     const vp = data.visualizationParams;
+    const parsedVp: {
+      colors?: Record<string, string>;
+      nodePositions?: [number, number][];
+    } = {};
+
     if ("colors" in vp && vp.colors !== undefined) {
       if (!isObject(vp.colors)) {
         return "`visualizationParams.colors` must be an object.";
@@ -149,10 +161,31 @@ export function parseKripkeStructureVisualizationJson(
           return `visualizationParams.colors["${key}"]: expected a CSS color string.`;
         }
       }
-      visualizationParams = { colors: vp.colors as Record<string, string> };
-    } else {
-      visualizationParams = {};
+      parsedVp.colors = vp.colors as Record<string, string>;
     }
+
+    if ("nodePositions" in vp && vp.nodePositions !== undefined) {
+      if (!Array.isArray(vp.nodePositions)) {
+        return "`visualizationParams.nodePositions` must be an array.";
+      }
+      if (vp.nodePositions.length !== frameResult.nodeCount) {
+        return `visualizationParams.nodePositions: expected ${frameResult.nodeCount} entries (one per state), got ${vp.nodePositions.length}.`;
+      }
+      for (let i = 0; i < vp.nodePositions.length; i++) {
+        const entry = vp.nodePositions[i];
+        if (
+          !Array.isArray(entry) ||
+          entry.length !== 2 ||
+          typeof entry[0] !== "number" ||
+          typeof entry[1] !== "number"
+        ) {
+          return `visualizationParams.nodePositions[${i}]: expected a pair [x, y] of numbers.`;
+        }
+      }
+      parsedVp.nodePositions = vp.nodePositions as [number, number][];
+    }
+
+    visualizationParams = parsedVp;
   }
 
   if (visualizationParams === undefined) {
