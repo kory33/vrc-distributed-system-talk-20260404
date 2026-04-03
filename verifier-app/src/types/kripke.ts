@@ -11,62 +11,74 @@
  * Invariants:
  * - `nodeCount` is a positive integer.
  * - Every index in `transitions` and `valuation` entries is in [0, nodeCount).
+ *
+ * Note: `transitions` and `valuation` arrays are permitted to contain
+ * duplicates. Semantically, duplicates are idempotent (R and V are sets),
+ * so consumers must treat these arrays as set representations.
  */
 export interface KripkeStructureJson {
   /** The number of states. States are identified by indices 0, ..., nodeCount - 1. */
   readonly nodeCount: number;
 
-  /** Transition relation: each entry [s, t] means state s can transition to state t. */
+  /**
+   * Transition relation R ⊆ S × S.
+   *
+   * Each entry [s, t] denotes an edge from state s to state t.
+   * Duplicate pairs are permitted and semantically idempotent.
+   */
   readonly transitions: readonly (readonly [number, number])[];
 
   /**
-   * Valuation (labeling) function V : AP → P(S).
+   * Valuation function V : AP → P(S).
    *
-   * Maps each atomic proposition name to the set of state indices where it holds.
+   * Maps each atomic proposition name to the array of state indices
+   * where it holds. Duplicate indices are permitted and semantically
+   * idempotent.
    */
   readonly valuation: Readonly<Record<string, readonly number[]>>;
 }
 
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 /**
- * Validates a parsed JSON value as a `KripkeStructureJson`.
- *
- * Returns the validated structure on success, or a human-readable error string.
+ * Returns the `KripkeStructureJson` denoted by `data`, or a human-readable
+ * error string if `data` does not represent a valid Kripke structure.
  */
 export function parseKripkeStructureJson(
   data: unknown,
 ): KripkeStructureJson | string {
-  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+  if (!isObject(data)) {
     return "Expected a JSON object at the top level.";
   }
 
-  const obj = data as Record<string, unknown>;
-
   // --- nodeCount ---
-  if (typeof obj.nodeCount !== "number" || !Number.isInteger(obj.nodeCount) || obj.nodeCount < 1) {
+  if (typeof data.nodeCount !== "number" || !Number.isInteger(data.nodeCount) || data.nodeCount < 1) {
     return "`nodeCount` must be a positive integer.";
   }
-  const nodeCount: number = obj.nodeCount;
+  const nodeCount: number = data.nodeCount;
 
   const inRange = (i: unknown): i is number =>
     typeof i === "number" && Number.isInteger(i) && i >= 0 && i < nodeCount;
 
   // --- transitions ---
-  if (!Array.isArray(obj.transitions)) {
+  if (!Array.isArray(data.transitions)) {
     return "`transitions` must be an array.";
   }
-  for (let idx = 0; idx < obj.transitions.length; idx++) {
-    const entry = obj.transitions[idx];
+  for (let idx = 0; idx < data.transitions.length; idx++) {
+    const entry = data.transitions[idx];
     if (!Array.isArray(entry) || entry.length !== 2 || !inRange(entry[0]) || !inRange(entry[1])) {
       return `transitions[${idx}]: expected a pair [source, target] of state indices in [0, ${nodeCount}).`;
     }
   }
-  const transitions = obj.transitions as [number, number][];
+  const transitions = data.transitions as [number, number][];
 
   // --- valuation ---
-  if (typeof obj.valuation !== "object" || obj.valuation === null || Array.isArray(obj.valuation)) {
+  if (!isObject(data.valuation)) {
     return "`valuation` must be an object mapping proposition names to arrays of state indices.";
   }
-  const valEntries = Object.entries(obj.valuation as Record<string, unknown>);
+  const valEntries = Object.entries(data.valuation);
   for (const [prop, indices] of valEntries) {
     if (!Array.isArray(indices)) {
       return `valuation["${prop}"]: expected an array of state indices.`;
@@ -77,36 +89,33 @@ export function parseKripkeStructureJson(
       }
     }
   }
-  const valuation = obj.valuation as Record<string, number[]>;
+  const valuation = data.valuation as Record<string, number[]>;
 
   return { nodeCount, transitions, valuation };
 }
 
 /**
- * Visualization parameters for a Kripke structure.
+ * Represents visualization parameters for rendering a Kripke structure.
  *
  * - `colors`: optional mapping from proposition names to CSS color strings.
+ *   Keys not present in the structure's valuation are ignored by the renderer.
+ *   Color strings are passed directly to the renderer without further validation.
  */
-export interface KripkeFrameVisualizationParamsJson {
+export interface KripkeStructureVisualizationParamsJson {
   readonly colors?: Readonly<Record<string, string>>;
 }
 
 /**
- * A Kripke structure together with visualization parameters.
+ * Represents a Kripke structure together with optional rendering parameters.
  */
 export interface KripkeStructureVisualizationJson {
   readonly frame: KripkeStructureJson;
-  readonly visualizationParams?: KripkeFrameVisualizationParamsJson;
-}
-
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
+  readonly visualizationParams?: KripkeStructureVisualizationParamsJson;
 }
 
 /**
- * Validates a parsed JSON value as a `KripkeStructureVisualizationJson`.
- *
- * Returns the validated structure on success, or a human-readable error string.
+ * Returns the `KripkeStructureVisualizationJson` denoted by `data`, or a
+ * human-readable error string if `data` is not a valid visualization payload.
  */
 export function parseKripkeStructureVisualizationJson(
   data: unknown,
@@ -125,7 +134,7 @@ export function parseKripkeStructureVisualizationJson(
   }
 
   // --- visualizationParams (optional) ---
-  let visualizationParams: KripkeFrameVisualizationParamsJson | undefined;
+  let visualizationParams: KripkeStructureVisualizationParamsJson | undefined;
   if ("visualizationParams" in data && data.visualizationParams !== undefined) {
     if (!isObject(data.visualizationParams)) {
       return "`visualizationParams` must be an object.";
@@ -146,5 +155,8 @@ export function parseKripkeStructureVisualizationJson(
     }
   }
 
+  if (visualizationParams === undefined) {
+    return { frame: frameResult };
+  }
   return { frame: frameResult, visualizationParams };
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import CytoscapeComponent from "react-cytoscapejs";
 import type cytoscape from "cytoscape";
 import {
@@ -11,19 +11,31 @@ import {
 // Color assignment
 // ---------------------------------------------------------------------------
 
-/** Golden-angle-based palette for auto-assigning distinguishable colors. */
+/**
+ * Returns an HSL color string whose hue is determined by the golden angle,
+ * producing a sequence of visually distinguishable colors.
+ */
 function autoColor(index: number): string {
   const hue = (index * 137.508) % 360;
   return `hsl(${hue}, 70%, 55%)`;
 }
 
+/** A proposition name together with its display color. */
+export interface PropositionColoring {
+  readonly name: string;
+  readonly color: string;
+}
+
 /**
- * Returns an ordered list of { name, color } for all effective propositions
- * (those present in `frame.valuation`), preserving insertion order.
+ * Returns the ordered list of proposition colorings for all propositions
+ * present in `viz.frame.valuation`, preserving their insertion order.
+ *
+ * Propositions with an explicit color in `viz.visualizationParams.colors`
+ * use that color; others are assigned via golden-angle HSL palette.
  */
 function resolvePropositionColors(
   viz: KripkeStructureVisualizationJson,
-): { name: string; color: string }[] {
+): PropositionColoring[] {
   const explicitColors = viz.visualizationParams?.colors ?? {};
   let autoIndex = 0;
   return Object.keys(viz.frame.valuation).map((name) => ({
@@ -67,53 +79,70 @@ const LAYOUT: cytoscape.LayoutOptions = {
 const INACTIVE_COLOR = "#616161";
 const FALSE_SECTOR_COLOR = "#2e2e2e";
 
+/**
+ * Returns Cytoscape element definitions for the given Kripke structure.
+ *
+ * Each node carries a `stateIndex` data field (the numeric state id)
+ * so that downstream consumers (tooltip, styling) can derive per-node
+ * information directly from the frame rather than through serialized data.
+ */
 function kripkeToElements(
   frame: KripkeStructureJson,
 ): cytoscape.ElementDefinition[] {
-  const allProps = Object.keys(frame.valuation).sort();
-
-  // Per-node set of true propositions (for tooltip)
-  const nodeTrueProps: Set<string>[] = Array.from(
-    { length: frame.nodeCount },
-    () => new Set(),
-  );
-  for (const [prop, indices] of Object.entries(frame.valuation)) {
-    for (const idx of indices) {
-      nodeTrueProps[idx].add(prop);
-    }
-  }
-
   const nodes: cytoscape.ElementDefinition[] = Array.from(
     { length: frame.nodeCount },
     (_, i) => ({
       data: {
         id: String(i),
         label: String(i),
-        valuationJson: JSON.stringify(
-          allProps.map((p) => [p, nodeTrueProps[i].has(p)] as const),
-        ),
+        stateIndex: i,
       },
     }),
   );
 
-  const edges: cytoscape.ElementDefinition[] = frame.transitions.map(
-    ([s, t], i) => ({
-      data: { id: `e${i}`, source: String(s), target: String(t) },
-    }),
-  );
+  // Deduplicate transitions (arrays are set representations per contract)
+  const seenEdges = new Set<string>();
+  const edges: cytoscape.ElementDefinition[] = [];
+  for (const [s, t] of frame.transitions) {
+    const key = `${s}->${t}`;
+    if (seenEdges.has(key)) continue;
+    seenEdges.add(key);
+    edges.push({
+      data: { id: key, source: String(s), target: String(t) },
+    });
+  }
 
   return [...nodes, ...edges];
 }
 
 /**
- * Builds a Cytoscape stylesheet reflecting the current proposition selection.
+ * Returns the set of proposition names that hold at `stateIndex`
+ * according to `frame.valuation`.
+ */
+function propositionsAt(
+  frame: KripkeStructureJson,
+  stateIndex: number,
+): Set<string> {
+  const result = new Set<string>();
+  for (const [prop, indices] of Object.entries(frame.valuation)) {
+    if (indices.includes(stateIndex)) {
+      result.add(prop);
+    }
+  }
+  return result;
+}
+
+/**
+ * Returns a Cytoscape stylesheet reflecting the current proposition selection.
  *
- * When `selectedProps` is empty, nodes are solid gray.
- * Otherwise, nodes become pie charts with equal-angle sectors.
+ * When `selectedProps` is empty, nodes are solid gray (#616161).
+ * Otherwise, each node becomes a pie chart with |selectedProps| equal-angle
+ * sectors: true-at-node sectors use the proposition's color, false sectors
+ * use #2e2e2e.
  */
 function buildStylesheet(
   frame: KripkeStructureJson,
-  propositions: { name: string; color: string }[],
+  propositions: PropositionColoring[],
   selectedProps: Set<string>,
 ): (cytoscape.StylesheetStyle | cytoscape.StylesheetCSS)[] {
   const selected = propositions.filter((p) => selectedProps.has(p.name));
@@ -131,7 +160,7 @@ function buildStylesheet(
   if (selected.length === 0) {
     nodeStyle["background-color"] = INACTIVE_COLOR;
   } else {
-    // Build per-node truth lookup: nodeId -> Set<prop>
+    // Pre-compute per-node truth for selected propositions
     const nodeTruth = new Map<number, Set<string>>();
     for (let i = 0; i < frame.nodeCount; i++) {
       nodeTruth.set(i, new Set());
@@ -149,14 +178,13 @@ function buildStylesheet(
     const sectorSize = 100 / selected.length;
 
     for (let si = 0; si < selected.length; si++) {
-      const n = si + 1; // 1-indexed
+      const n = si + 1; // Cytoscape pie slices are 1-indexed
       nodeStyle[`pie-${n}-background-size`] = sectorSize;
-      // Use a function mapper: for each element, check if the prop is true
       const propName = selected[si].name;
       const propColor = selected[si].color;
       nodeStyle[`pie-${n}-background-color`] = (ele: cytoscape.NodeSingular) => {
-        const nodeId = parseInt(ele.data("id"), 10);
-        return nodeTruth.get(nodeId)?.has(propName) ? propColor : FALSE_SECTOR_COLOR;
+        const stateIndex = ele.data("stateIndex") as number;
+        return nodeTruth.get(stateIndex)?.has(propName) ? propColor : FALSE_SECTOR_COLOR;
       };
     }
   }
@@ -177,10 +205,17 @@ function buildStylesheet(
 }
 
 // ---------------------------------------------------------------------------
-// Tooltip
+// Tooltip (DOM-based, no innerHTML to avoid XSS from user-provided JSON)
 // ---------------------------------------------------------------------------
 
-function setupTooltip(cy: cytoscape.Core) {
+/**
+ * Attaches a hover tooltip to Cytoscape nodes. Returns a cleanup function
+ * that removes the DOM element and unregisters all event handlers.
+ */
+function setupTooltip(
+  cy: cytoscape.Core,
+  getFrame: () => KripkeStructureJson,
+): () => void {
   const tooltipEl = document.createElement("div");
   Object.assign(tooltipEl.style, {
     position: "absolute",
@@ -200,20 +235,30 @@ function setupTooltip(cy: cytoscape.Core) {
 
   let hideTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  const show = (node: cytoscape.NodeSingular) => {
+  const handleMouseOver = (e: cytoscape.EventObject) => {
+    const node = e.target as cytoscape.NodeSingular;
     if (hideTimeout) {
       clearTimeout(hideTimeout);
       hideTimeout = null;
     }
-    const raw = node.data("valuationJson") as string;
-    const entries: [string, boolean][] = JSON.parse(raw);
-    if (entries.length === 0) {
+
+    const frame = getFrame();
+    const stateIndex = node.data("stateIndex") as number;
+    const trueProps = propositionsAt(frame, stateIndex);
+    const allProps = Object.keys(frame.valuation).sort();
+
+    // Build tooltip content safely via DOM (no innerHTML)
+    tooltipEl.replaceChildren();
+    if (allProps.length === 0) {
       tooltipEl.textContent = "(no propositions)";
     } else {
-      tooltipEl.innerHTML = entries
-        .map(([prop, holds]) => `${holds ? "✅" : "❌"} ${prop}`)
-        .join("<br>");
+      for (const prop of allProps) {
+        const line = document.createElement("div");
+        line.textContent = `${trueProps.has(prop) ? "✅" : "❌"} ${prop}`;
+        tooltipEl.appendChild(line);
+      }
     }
+
     tooltipEl.style.display = "block";
     const pos = node.renderedPosition();
     tooltipEl.style.left = `${pos.x + 25}px`;
@@ -227,16 +272,30 @@ function setupTooltip(cy: cytoscape.Core) {
     }, 100);
   };
 
-  cy.on("mouseover", "node", (e) => show(e.target));
-  cy.on("mouseout", "node", () => scheduleHide());
+  const handleMouseOut = () => scheduleHide();
 
-  tooltipEl.addEventListener("mouseenter", () => {
+  const handleTooltipEnter = () => {
     if (hideTimeout) {
       clearTimeout(hideTimeout);
       hideTimeout = null;
     }
-  });
-  tooltipEl.addEventListener("mouseleave", () => scheduleHide());
+  };
+
+  const handleTooltipLeave = () => scheduleHide();
+
+  cy.on("mouseover", "node", handleMouseOver);
+  cy.on("mouseout", "node", handleMouseOut);
+  tooltipEl.addEventListener("mouseenter", handleTooltipEnter);
+  tooltipEl.addEventListener("mouseleave", handleTooltipLeave);
+
+  return () => {
+    if (hideTimeout) clearTimeout(hideTimeout);
+    cy.off("mouseover", "node", handleMouseOver);
+    cy.off("mouseout", "node", handleMouseOut);
+    tooltipEl.removeEventListener("mouseenter", handleTooltipEnter);
+    tooltipEl.removeEventListener("mouseleave", handleTooltipLeave);
+    tooltipEl.remove();
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +307,7 @@ function ValuationSelector({
   selected,
   onToggle,
 }: {
-  propositions: { name: string; color: string }[];
+  propositions: PropositionColoring[];
   selected: Set<string>;
   onToggle: (name: string) => void;
 }) {
@@ -315,13 +374,18 @@ export function KripkeVisualizerTab() {
   const [error, setError] = useState<string | null>(null);
   const [selectedProps, setSelectedProps] = useState<Set<string>>(new Set());
   const cyRef = useRef<cytoscape.Core | null>(null);
+  const tooltipCleanupRef = useRef<(() => void) | null>(null);
+  const vizRef = useRef(viz);
+  vizRef.current = viz;
 
-  const propositions = resolvePropositionColors(viz);
+  const propositions = useMemo(() => resolvePropositionColors(viz), [viz]);
 
   const handleCy = useCallback((cy: cytoscape.Core) => {
     if (cyRef.current === cy) return;
+    // Clean up previous tooltip if any
+    tooltipCleanupRef.current?.();
     cyRef.current = cy;
-    setupTooltip(cy);
+    tooltipCleanupRef.current = setupTooltip(cy, () => vizRef.current.frame);
   }, []);
 
   // Apply pie-chart stylesheet whenever selection or data changes
@@ -362,7 +426,6 @@ export function KripkeVisualizerTab() {
     });
   }, []);
 
-  // Build initial stylesheet for the CytoscapeComponent prop
   const stylesheet = buildStylesheet(viz.frame, propositions, selectedProps);
 
   return (

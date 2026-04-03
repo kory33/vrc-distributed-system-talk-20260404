@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
 import {
+  type KripkeStructureJson,
   parseKripkeStructureJson,
   parseKripkeStructureVisualizationJson,
 } from "./kripke";
@@ -49,8 +50,9 @@ describe("parseKripkeStructureJson", () => {
     expect(typeof result).toBe("string");
   });
 
-  // PBT: any well-formed generated structure should parse successfully
-  it("accepts any well-formed Kripke structure (PBT)", () => {
+  // PBT: parseKripkeStructureJson is a left inverse of the identity on
+  // well-formed KripkeStructureJson values
+  it("returns the input value for any well-formed Kripke structure (PBT)", () => {
     const arbKripke = fc
       .integer({ min: 1, max: 20 })
       .chain((nodeCount) => {
@@ -68,24 +70,25 @@ describe("parseKripkeStructureJson", () => {
     fc.assert(
       fc.property(arbKripke, (ks) => {
         const result = parseKripkeStructureJson(ks);
-        return typeof result !== "string";
+        expect(result).toEqual(ks);
       }),
     );
   });
 
-  // PBT: corrupting a valid structure should be caught
-  it("rejects structures with negative transition indices (PBT)", () => {
+  // PBT: any transition index outside [0, nodeCount) is rejected
+  it("rejects any out-of-range transition index (PBT)", () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 1, max: 10 }),
-        fc.integer({ max: -1 }),
+        fc.oneof(fc.integer({ max: -1 }), fc.integer({ min: 10 })),
         (nodeCount, badIdx) => {
+          fc.pre(badIdx < 0 || badIdx >= nodeCount);
           const result = parseKripkeStructureJson({
             nodeCount,
             transitions: [[0, badIdx]],
             valuation: {},
           });
-          return typeof result === "string";
+          expect(typeof result).toBe("string");
         },
       ),
     );
@@ -123,31 +126,36 @@ describe("parseKripkeStructureVisualizationJson", () => {
     expect(typeof result).toBe("string");
   });
 
-  // PBT: well-formed visualization JSON always parses
-  it("accepts any well-formed visualization JSON (PBT)", () => {
+  // PBT: parseKripkeStructureVisualizationJson is a left inverse of the
+  // identity on well-formed KripkeStructureVisualizationJson values
+  it("returns the input value for any well-formed visualization JSON (PBT)", () => {
     const arbColor = fc.stringMatching(/^#[0-9a-f]{6}$/);
     const arbViz = fc
       .integer({ min: 1, max: 20 })
       .chain((nodeCount) => {
         const arbIndex = fc.integer({ min: 0, max: nodeCount - 1 });
         const arbPropName = fc.stringMatching(/^[a-z]{1,5}$/);
-        return fc.record({
-          frame: fc.record({
-            nodeCount: fc.constant(nodeCount),
-            transitions: fc.array(fc.tuple(arbIndex, arbIndex)),
-            valuation: fc.dictionary(arbPropName, fc.array(arbIndex)),
-          }),
-          visualizationParams: fc.option(
-            fc.record({ colors: fc.dictionary(arbPropName, arbColor) }),
-            { nil: undefined },
-          ),
+        const arbFrame = fc.record({
+          nodeCount: fc.constant(nodeCount),
+          transitions: fc.array(fc.tuple(arbIndex, arbIndex)),
+          valuation: fc.dictionary(arbPropName, fc.array(arbIndex)),
         });
+        // Generate either { frame } or { frame, visualizationParams }
+        // to test that omitted keys stay omitted
+        return fc.oneof(
+          arbFrame.map((frame) => ({ frame })),
+          fc.record({
+            frame: arbFrame,
+            visualizationParams: fc.record({
+              colors: fc.dictionary(arbPropName, arbColor),
+            }),
+          }),
+        );
       });
 
     fc.assert(
       fc.property(arbViz, (v) => {
-        const result = parseKripkeStructureVisualizationJson(v);
-        return typeof result !== "string";
+        expect(parseKripkeStructureVisualizationJson(v)).toEqual(v);
       }),
     );
   });
