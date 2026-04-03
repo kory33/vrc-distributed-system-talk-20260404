@@ -1,0 +1,5 @@
+# contains private workflow instructions
+WORKFLOW.md
+
+# temporary directory for LLM scratch space
+LLM_SCRATCH_DIR
