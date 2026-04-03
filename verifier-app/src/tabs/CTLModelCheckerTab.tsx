@@ -440,8 +440,16 @@ function FormulaPanel({
             <span style={{ color: "#7ec8e3" }}>{formulaToString(hoveredFormula)}</span>
             {" "}satisfied at {hoveredSat.size} of {viz.kripkeStructure.nodeCount} state{viz.kripkeStructure.nodeCount !== 1 ? "s" : ""}
           </>
-        ) : (
-          "\u00A0" /* non-breaking space to reserve line height */
+        ) : formula && satMap ? (() => {
+          const rootSat = satMap.get(formula);
+          const n = viz.kripkeStructure.nodeCount;
+          if (!rootSat || rootSat.size === 0) return <span style={{ color: "#f88" }}>Not satisfied at any state</span>;
+          if (rootSat.size === n) return <span style={{ color: "#8f8" }}>Valid at all {n} states</span>;
+          const counterexamples: number[] = [];
+          for (let i = 0; i < n; i++) { if (!rootSat.has(i)) counterexamples.push(i); }
+          return <span style={{ color: "#f88" }}>Counterexamples: {"{" + counterexamples.join(", ") + "}"}</span>;
+        })() : (
+          "\u00A0"
         )}
       </div>
 
