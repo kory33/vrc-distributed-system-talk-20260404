@@ -109,7 +109,7 @@ export interface KripkeStructureVisualizationParamsJson {
  * Represents a Kripke structure together with optional rendering parameters.
  */
 export interface KripkeStructureVisualizationJson {
-  readonly frame: KripkeStructureJson;
+  readonly kripke_structure: KripkeStructureJson;
   readonly visualizationParams?: KripkeStructureVisualizationParamsJson;
 }
 
@@ -124,13 +124,13 @@ export function parseKripkeStructureVisualizationJson(
     return "Expected a JSON object at the top level.";
   }
 
-  // --- frame ---
-  if (!("frame" in data)) {
-    return "Missing `frame` field.";
+  // --- kripke_structure ---
+  if (!("kripke_structure" in data)) {
+    return "Missing `kripke_structure` field.";
   }
-  const frameResult = parseKripkeStructureJson(data.frame);
+  const frameResult = parseKripkeStructureJson(data.kripke_structure);
   if (typeof frameResult === "string") {
-    return `frame: ${frameResult}`;
+    return `kripke_structure: ${frameResult}`;
   }
 
   // --- visualizationParams (optional) ---
@@ -156,7 +156,7 @@ export function parseKripkeStructureVisualizationJson(
   }
 
   if (visualizationParams === undefined) {
-    return { frame: frameResult };
+    return { kripke_structure: frameResult };
   }
-  return { frame: frameResult, visualizationParams };
+  return { kripke_structure: frameResult, visualizationParams };
 }

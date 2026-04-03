@@ -28,7 +28,7 @@ export interface PropositionColoring {
 
 /**
  * Returns the ordered list of proposition colorings for all propositions
- * present in `viz.frame.valuation`, preserving their insertion order.
+ * present in `viz.kripke_structure.valuation`, preserving their insertion order.
  *
  * Propositions with an explicit color in `viz.visualizationParams.colors`
  * use that color; others are assigned via golden-angle HSL palette.
@@ -38,7 +38,7 @@ function resolvePropositionColors(
 ): PropositionColoring[] {
   const explicitColors = viz.visualizationParams?.colors ?? {};
   let autoIndex = 0;
-  return Object.keys(viz.frame.valuation).map((name) => ({
+  return Object.keys(viz.kripke_structure.valuation).map((name) => ({
     name,
     color: explicitColors[name] ?? autoColor(autoIndex++),
   }));
@@ -49,7 +49,7 @@ function resolvePropositionColors(
 // ---------------------------------------------------------------------------
 
 const SAMPLE_JSON: KripkeStructureVisualizationJson = {
-  frame: {
+  kripke_structure: {
     nodeCount: 3,
     transitions: [
       [0, 1],
@@ -84,13 +84,13 @@ const FALSE_SECTOR_COLOR = "#2e2e2e";
  *
  * Each node carries a `stateIndex` data field (the numeric state id)
  * so that downstream consumers (tooltip, styling) can derive per-node
- * information directly from the frame rather than through serialized data.
+ * information directly from the Kripke structure rather than through serialized data.
  */
 function kripkeToElements(
-  frame: KripkeStructureJson,
+  kripkeStructure: KripkeStructureJson,
 ): cytoscape.ElementDefinition[] {
   const nodes: cytoscape.ElementDefinition[] = Array.from(
-    { length: frame.nodeCount },
+    { length: kripkeStructure.nodeCount },
     (_, i) => ({
       data: {
         id: String(i),
@@ -103,7 +103,7 @@ function kripkeToElements(
   // Deduplicate transitions (arrays are set representations per contract)
   const seenEdges = new Set<string>();
   const edges: cytoscape.ElementDefinition[] = [];
-  for (const [s, t] of frame.transitions) {
+  for (const [s, t] of kripkeStructure.transitions) {
     const key = `${s}->${t}`;
     if (seenEdges.has(key)) continue;
     seenEdges.add(key);
@@ -117,14 +117,14 @@ function kripkeToElements(
 
 /**
  * Returns the set of proposition names that hold at `stateIndex`
- * according to `frame.valuation`.
+ * according to `kripkeStructure.valuation`.
  */
 function propositionsAt(
-  frame: KripkeStructureJson,
+  kripkeStructure: KripkeStructureJson,
   stateIndex: number,
 ): Set<string> {
   const result = new Set<string>();
-  for (const [prop, indices] of Object.entries(frame.valuation)) {
+  for (const [prop, indices] of Object.entries(kripkeStructure.valuation)) {
     if (indices.includes(stateIndex)) {
       result.add(prop);
     }
@@ -141,7 +141,7 @@ function propositionsAt(
  * use #2e2e2e.
  */
 function buildStylesheet(
-  frame: KripkeStructureJson,
+  kripkeStructure: KripkeStructureJson,
   propositions: PropositionColoring[],
   selectedProps: Set<string>,
 ): (cytoscape.StylesheetStyle | cytoscape.StylesheetCSS)[] {
@@ -163,11 +163,11 @@ function buildStylesheet(
   } else {
     // Pre-compute per-node truth for selected propositions
     const nodeTruth = new Map<number, Set<string>>();
-    for (let i = 0; i < frame.nodeCount; i++) {
+    for (let i = 0; i < kripkeStructure.nodeCount; i++) {
       nodeTruth.set(i, new Set());
     }
     for (const { name } of selected) {
-      const indices = frame.valuation[name];
+      const indices = kripkeStructure.valuation[name];
       if (indices) {
         for (const idx of indices) {
           nodeTruth.get(idx)!.add(name);
@@ -217,17 +217,17 @@ interface TooltipState {
 
 function NodeTooltip({
   tooltip,
-  frame,
+  kripkeStructure,
   onMouseEnter,
   onMouseLeave,
 }: {
   tooltip: TooltipState;
-  frame: KripkeStructureJson;
+  kripkeStructure: KripkeStructureJson;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
 }) {
-  const trueProps = propositionsAt(frame, tooltip.stateIndex);
-  const allProps = Object.keys(frame.valuation).sort();
+  const trueProps = propositionsAt(kripkeStructure, tooltip.stateIndex);
+  const allProps = Object.keys(kripkeStructure.valuation).sort();
 
   return (
     <div
@@ -374,7 +374,7 @@ export function KripkeVisualizerTab() {
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const sheet = buildStylesheet(viz.frame, propositions, selectedProps);
+    const sheet = buildStylesheet(viz.kripke_structure, propositions, selectedProps);
     cy.style(sheet as cytoscape.StylesheetCSS[]);
   }, [viz, selectedProps, propositions]);
 
@@ -408,7 +408,7 @@ export function KripkeVisualizerTab() {
     });
   }, []);
 
-  const stylesheet = buildStylesheet(viz.frame, propositions, selectedProps);
+  const stylesheet = buildStylesheet(viz.kripke_structure, propositions, selectedProps);
 
   return (
     <div
@@ -482,7 +482,7 @@ export function KripkeVisualizerTab() {
           onToggle={handleToggle}
         />
         <CytoscapeComponent
-          elements={kripkeToElements(viz.frame)}
+          elements={kripkeToElements(viz.kripke_structure)}
           style={{ width: "100%", height: "100%" }}
           layout={LAYOUT}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}
@@ -491,7 +491,7 @@ export function KripkeVisualizerTab() {
         {tooltip && (
           <NodeTooltip
             tooltip={tooltip}
-            frame={viz.frame}
+            kripkeStructure={viz.kripke_structure}
             onMouseEnter={cancelHide}
             onMouseLeave={scheduleHide}
           />
