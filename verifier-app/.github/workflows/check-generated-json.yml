@@ -1,0 +1,51 @@
+name: Check generated JSON files
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check-generated-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: volta-cli/action@v4
+
+      - run: npm ci
+
+      - name: Verify .json exists for every .ts script
+        working-directory: generating-scripts
+        run: |
+          missing=0
+          for ts_file in *.ts; do
+            json_file="${ts_file%.ts}.json"
+            if [ ! -f "$json_file" ]; then
+              echo "::error::Missing $json_file for $ts_file"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All .json files present."
+
+      - name: Verify generation results match committed files
+        working-directory: generating-scripts
+        run: |
+          mismatch=0
+          for ts_file in *.ts; do
+            json_file="${ts_file%.ts}.json"
+            actual="$(npx tsx "$ts_file")"
+            if ! diff -q <(echo "$actual") "$json_file" > /dev/null 2>&1; then
+              echo "::error::$json_file does not match output of $ts_file"
+              diff --unified <(echo "$actual") "$json_file" || true
+              mismatch=1
+            fi
+          done
+          if [ "$mismatch" -ne 0 ]; then
+            echo ""
+            echo "Run 'bash generating-scripts/regenerate-all.sh' to fix."
+            exit 1
+          fi
+          echo "All .json files up to date."
