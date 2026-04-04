@@ -9,6 +9,7 @@ import {
 } from "../types/kripke";
 import { type CTLFormula, parseCTL, formulaToDisplayString } from "../types/ctl";
 import { checkCTL } from "../types/ctlModelChecker";
+import { isInUniversalFragment, generateCounterexampleTrace } from "../types/ctlCounterexample";
 import { FormulaVisualizer } from "../components/FormulaVisualizer";
 import { createOutline, type IRectangle, type ILine } from "bubblesets-js";
 import katex from "katex";
@@ -66,8 +67,8 @@ const SAMPLE_JSON: KripkeStructureVisualizationJson = {
 // Cytoscape helpers
 // ---------------------------------------------------------------------------
 
-const AUTO_LAYOUT: cytoscape.LayoutOptions = { name: "cose", animate: false };
-const PRESET_LAYOUT: cytoscape.LayoutOptions = { name: "preset", animate: false };
+const AUTO_LAYOUT = { name: "fcose" as const, animate: false };
+const PRESET_LAYOUT = { name: "preset" as const, animate: false };
 
 function chooseLayout(
   params?: KripkeStructureVisualizationParamsJson,
@@ -86,9 +87,9 @@ function kripkeToElements(
     { length: kripkeStructure.nodeCount },
     (_, i) => ({
       data: { id: String(i), label: String(i), stateIndex: i },
-      ...(nodePositions
-        ? { position: { x: nodePositions[i][0], y: -nodePositions[i][1] } }
-        : {}),
+      position: nodePositions
+        ? { x: nodePositions[i][0], y: -nodePositions[i][1] }
+        : { x: Math.random() * 1000, y: Math.random() * 1000 },
     }),
   );
 
@@ -478,6 +479,100 @@ function FormulaSyntaxModal({ onClose }: { onClose: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
+// Trace modal
+// ---------------------------------------------------------------------------
+
+function TraceModal({ json, onClose }: { json: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.6)",
+        zIndex: 10000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#2a2a32",
+          border: "1px solid #555",
+          borderRadius: 10,
+          padding: 28,
+          maxWidth: 740,
+          maxHeight: "80vh",
+          display: "flex",
+          flexDirection: "column",
+          color: "#eee",
+          fontSize: 15,
+          lineHeight: 1.7,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <span style={{ fontWeight: 700, fontSize: 20 }}>Counterexample Trace</span>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#aaa",
+              fontSize: 22,
+              cursor: "pointer",
+              padding: "0 4px",
+            }}
+          >
+            &times;
+          </button>
+        </div>
+        <pre
+          style={{
+            flex: 1,
+            overflow: "auto",
+            background: "#1e1e24",
+            padding: 16,
+            borderRadius: 6,
+            fontSize: 13,
+            fontFamily: "Martian Mono, monospace",
+            margin: 0,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-all",
+          }}
+        >
+          {json}
+        </pre>
+        <div style={{ marginTop: 12, textAlign: "right" }}>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(json);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            style={{
+              padding: "6px 16px",
+              borderRadius: 4,
+              border: "1px solid #4a90d9",
+              background: "#4a90d9",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 600,
+              fontSize: 14,
+            }}
+          >
+            {copied ? "Copied!" : "Copy to clipboard"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Formula panel (floating overlay on the graph)
 // ---------------------------------------------------------------------------
 
@@ -501,7 +596,29 @@ function FormulaPanel({
   onHover: (f: CTLFormula | null) => void;
 }) {
   const [showSyntax, setShowSyntax] = useState(false);
+  const [traceJson, setTraceJson] = useState<string | null>(null);
+  const [panelWidth, setPanelWidth] = useState(680);
   const hoveredSat = hoveredFormula && satMap?.get(hoveredFormula);
+
+  const handleResizePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    const pointerId = e.pointerId;
+    (e.target as HTMLElement).setPointerCapture(pointerId);
+
+    const onMove = (ev: PointerEvent) => {
+      // Dragging left edge: moving left increases width
+      setPanelWidth(Math.max(300, startWidth + (startX - ev.clientX)));
+    };
+    const onUp = () => {
+      (e.target as HTMLElement).releasePointerCapture(pointerId);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, [panelWidth]);
 
   return (
     <div
@@ -509,7 +626,8 @@ function FormulaPanel({
         position: "absolute",
         bottom: 12,
         right: 12,
-        width: 680,
+        width: panelWidth,
+        maxWidth: "90%",
         maxHeight: "70%",
         background: "rgba(40, 40, 48, 0.96)",
         border: "1px solid #555",
@@ -524,6 +642,20 @@ function FormulaPanel({
         boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
       }}
     >
+      {/* Left-edge resize handle */}
+      <div
+        onPointerDown={handleResizePointerDown}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: 6,
+          height: "100%",
+          cursor: "ew-resize",
+          zIndex: 1,
+        }}
+      />
+
       <div style={{ fontWeight: 600, fontSize: 24 }}>CTL Formula to Check</div>
 
       {/* Formula visualizer */}
@@ -559,7 +691,30 @@ function FormulaPanel({
           if (rootSat.size === n) return <span style={{ color: "#8f8" }}>Valid at all {n} states</span>;
           const counterexamples: number[] = [];
           for (let i = 0; i < n; i++) { if (!rootSat.has(i)) counterexamples.push(i); }
-          return <span style={{ color: "#f88" }}>Counterexamples: {"{" + counterexamples.join(", ") + "}"}</span>;
+          const canTrace = isInUniversalFragment(formula);
+          return (
+            <span style={{ color: "#f88" }}>
+              Counterexamples: {"{" + counterexamples.join(", ") + "}"}
+              {canTrace && (
+                <>
+                  {" "}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const trace = generateCounterexampleTrace(
+                        viz.kripkeStructure, satMap, formula, counterexamples[0],
+                      );
+                      if (trace) setTraceJson(JSON.stringify(trace, null, 2));
+                    }}
+                    style={{ color: "#7ec8e3", fontSize: 14, textDecoration: "none" }}
+                  >
+                    Show trace
+                  </a>
+                </>
+              )}
+            </span>
+          );
         })() : (
           "\u00A0"
         )}
@@ -595,6 +750,9 @@ function FormulaPanel({
         <div style={{ color: "#f88", fontSize: 18 }}>{formulaError}</div>
       )}
       {showSyntax && <FormulaSyntaxModal onClose={() => setShowSyntax(false)} />}
+      {traceJson && (
+        <TraceModal json={traceJson} onClose={() => setTraceJson(null)} />
+      )}
     </div>
   );
 }
@@ -621,6 +779,10 @@ export function CTLModelCheckerTab() {
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
 
   const propositions = useMemo(() => resolvePropositionColors(viz), [viz]);
+  const elements = useMemo(
+    () => kripkeToElements(viz.kripkeStructure, viz.visualizationParams?.nodePositions),
+    [viz],
+  );
 
   // Parse formula
   const { formula, formulaError } = useMemo(() => {
@@ -741,6 +903,12 @@ export function CTLModelCheckerTab() {
   // since CytoscapeComponent only applies the declarative stylesheet on mount.
   useEffect(() => {
     const cy = cyRef.current;
+    if (!cy || viz.visualizationParams?.nodePositions) return;
+    cy.layout(AUTO_LAYOUT).run();
+  }, [viz]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
     if (!cy) return;
     const sheet = buildStylesheet(viz.kripkeStructure, propositions, selectedProps);
     cy.style(sheet as cytoscape.StylesheetCSS[]);
@@ -818,6 +986,15 @@ export function CTLModelCheckerTab() {
         >
           Parse &amp; Render
         </button>
+        <div style={{ marginTop: 4, fontSize: 13 }}>
+          <a
+            href="https://github.com/kory33/vrc-distributed-system-talk-20260404/tree/main/verifier-app/generating-scripts"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Standalone model-generating scripts
+          </a>
+        </div>
         {error && (
           <div
             style={{
@@ -851,7 +1028,7 @@ export function CTLModelCheckerTab() {
           onToggle={handleToggle}
         />
         <CytoscapeComponent
-          elements={kripkeToElements(viz.kripkeStructure, viz.visualizationParams?.nodePositions)}
+          elements={elements}
           style={{ width: "100%", height: "100%" }}
           layout={chooseLayout(viz.visualizationParams)}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}

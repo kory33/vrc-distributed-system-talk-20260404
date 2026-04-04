@@ -1,6 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import cytoscape from "cytoscape";
+import fcose from "cytoscape-fcose";
 import { App } from "./App";
+
+cytoscape.use(fcose);
 
 const rootElement = document.getElementById("root");
 if (rootElement === null) {

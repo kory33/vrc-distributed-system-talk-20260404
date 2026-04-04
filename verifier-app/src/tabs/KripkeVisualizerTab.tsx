@@ -72,19 +72,19 @@ const SAMPLE_JSON: KripkeStructureVisualizationJson = {
 // Cytoscape helpers
 // ---------------------------------------------------------------------------
 
-const AUTO_LAYOUT: cytoscape.LayoutOptions = {
-  name: "cose",
+const AUTO_LAYOUT = {
+  name: "fcose" as const,
   animate: false,
 };
 
-const PRESET_LAYOUT: cytoscape.LayoutOptions = {
-  name: "preset",
+const PRESET_LAYOUT = {
+  name: "preset" as const,
   animate: false,
 };
 
 /**
  * Returns the Cytoscape layout to use: `preset` when node positions are
- * provided, `cose` (force-directed) otherwise.
+ * provided, `fcose` (force-directed) otherwise.
  */
 function chooseLayout(
   params?: KripkeStructureVisualizationParamsJson,
@@ -114,11 +114,13 @@ function kripkeToElements(
         label: String(i),
         stateIndex: i,
       },
-      // Cytoscape uses a screen coordinate system (y increases downward),
-      // so we negate the y component of the right-handed input coordinates.
-      ...(nodePositions
-        ? { position: { x: nodePositions[i][0], y: -nodePositions[i][1] } }
-        : {}),
+      // When explicit positions are provided, use them (negating y to convert
+      // from right-handed input coordinates to Cytoscape's screen coordinates).
+      // Otherwise, scatter nodes randomly so that the force-directed layout
+      // starts from a spread-out state rather than inheriting stale positions.
+      position: nodePositions
+        ? { x: nodePositions[i][0], y: -nodePositions[i][1] }
+        : { x: Math.random() * 1000, y: Math.random() * 1000 },
     }),
   );
 
@@ -362,6 +364,10 @@ export function KripkeVisualizerTab() {
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const propositions = useMemo(() => resolvePropositionColors(viz), [viz]);
+  const elements = useMemo(
+    () => kripkeToElements(viz.kripkeStructure, viz.visualizationParams?.nodePositions),
+    [viz],
+  );
 
   const scheduleHide = useCallback(() => {
     if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
@@ -391,6 +397,15 @@ export function KripkeVisualizerTab() {
     });
     cy.on("mouseout", "node", scheduleHide);
   }, [cancelHide, scheduleHide]);
+
+  // Run the force-directed layout whenever the model changes.
+  // react-cytoscapejs skips layout re-runs when the layout prop is referentially
+  // stable, so we drive it manually here.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || viz.visualizationParams?.nodePositions) return;
+    cy.layout(AUTO_LAYOUT).run();
+  }, [viz]);
 
   // Apply pie-chart stylesheet whenever selection or data changes
   useEffect(() => {
@@ -472,6 +487,15 @@ export function KripkeVisualizerTab() {
         >
           Parse &amp; Render
         </button>
+        <div style={{ marginTop: 4, fontSize: 13 }}>
+          <a
+            href="https://github.com/kory33/vrc-distributed-system-talk-20260404/tree/main/verifier-app/generating-scripts"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Standalone model-generating scripts
+          </a>
+        </div>
         {error && (
           <div
             style={{
@@ -504,7 +528,7 @@ export function KripkeVisualizerTab() {
           onToggle={handleToggle}
         />
         <CytoscapeComponent
-          elements={kripkeToElements(viz.kripkeStructure, viz.visualizationParams?.nodePositions)}
+          elements={elements}
           style={{ width: "100%", height: "100%" }}
           layout={chooseLayout(viz.visualizationParams)}
           stylesheet={stylesheet as cytoscape.StylesheetCSS[]}

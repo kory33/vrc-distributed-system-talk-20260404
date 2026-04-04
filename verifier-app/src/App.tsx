@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CTLModelCheckerTab } from "./tabs/CTLModelCheckerTab";
+import { TwoPhaseCommitTraceTab } from "./tabs/TwoPhaseCommitTraceTab";
 import "./App.css";
 
 const TABS = [
@@ -7,6 +8,11 @@ const TABS = [
     id: "ctl-model-checker",
     label: "CTL Model Checker",
     render: () => <CTLModelCheckerTab />,
+  },
+  {
+    id: "2pc-trace",
+    label: "2PC Trace Visualizer",
+    render: () => <TwoPhaseCommitTraceTab />,
   },
 ] as const;
 
