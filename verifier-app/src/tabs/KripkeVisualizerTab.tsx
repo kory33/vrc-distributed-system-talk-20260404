@@ -487,6 +487,15 @@ export function KripkeVisualizerTab() {
         >
           Parse &amp; Render
         </button>
+        <div style={{ marginTop: 4, fontSize: 13 }}>
+          <a
+            href="https://github.com/kory33/vrc-distributed-system-talk-20260404/tree/main/verifier-app/generating-scripts"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Standalone model-generating scripts
+          </a>
+        </div>
         {error && (
           <div
             style={{
