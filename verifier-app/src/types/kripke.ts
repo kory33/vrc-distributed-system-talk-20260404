@@ -118,6 +118,7 @@ export interface KripkeStructureVisualizationParamsJson {
 export interface KripkeStructureVisualizationJson {
   readonly kripkeStructure: KripkeStructureJson;
   readonly visualizationParams?: KripkeStructureVisualizationParamsJson;
+  readonly defaultCTLFormulaToCheck?: string;
 }
 
 /**
@@ -188,8 +189,21 @@ export function parseKripkeStructureVisualizationJson(
     visualizationParams = parsedVp;
   }
 
-  if (visualizationParams === undefined) {
-    return { kripkeStructure: frameResult };
+  // --- defaultCTLFormulaToCheck (optional) ---
+  let defaultCTLFormulaToCheck: string | undefined;
+  if (
+    "defaultCTLFormulaToCheck" in data &&
+    data.defaultCTLFormulaToCheck !== undefined
+  ) {
+    if (typeof data.defaultCTLFormulaToCheck !== "string") {
+      return "`defaultCTLFormulaToCheck` must be a string.";
+    }
+    defaultCTLFormulaToCheck = data.defaultCTLFormulaToCheck;
   }
-  return { kripkeStructure: frameResult, visualizationParams };
+
+  return {
+    kripkeStructure: frameResult,
+    ...(visualizationParams !== undefined && { visualizationParams }),
+    ...(defaultCTLFormulaToCheck !== undefined && { defaultCTLFormulaToCheck }),
+  };
 }

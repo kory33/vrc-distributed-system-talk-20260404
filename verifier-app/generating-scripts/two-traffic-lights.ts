@@ -26,6 +26,7 @@ type KripkeStructureVisualizationJson = {
     colors?: Record<string, string>;
     nodePositions?: [number, number][];
   };
+  defaultCTLFormulaToCheck?: string;
 };
 
 // --- 状態の割り当て ---
@@ -63,6 +64,7 @@ const result: KripkeStructureVisualizationJson = {
     transitions,
     valuation,
   },
+  defaultCTLFormulaToCheck: "AF light1_green",
   visualizationParams: {
     colors: {
       light1_green: "#22c55e",

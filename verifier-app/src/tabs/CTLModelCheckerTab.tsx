@@ -58,6 +58,7 @@ const SAMPLE_JSON: KripkeStructureVisualizationJson = {
   visualizationParams: {
     colors: { init: "#4caf50", busy: "#ff9800" },
   },
+  defaultCTLFormulaToCheck: "AG (init -> EX busy)",
 };
 
 // ---------------------------------------------------------------------------
@@ -221,10 +222,10 @@ function NodeTooltip({
       {allProps.length === 0
         ? "(no propositions)"
         : allProps.map((prop) => (
-            <div key={prop}>
-              {trueProps.has(prop) ? "\u2705" : "\u274c"} {prop}
-            </div>
-          ))}
+          <div key={prop}>
+            {trueProps.has(prop) ? "\u2705" : "\u274c"} {prop}
+          </div>
+        ))}
     </div>
   );
 }
@@ -491,7 +492,7 @@ export function CTLModelCheckerTab() {
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // CTL formula state
-  const [formulaText, setFormulaText] = useState("AG (init -> EX busy)");
+  const [formulaText, setFormulaText] = useState(SAMPLE_JSON.defaultCTLFormulaToCheck ?? "");
   const [hoveredFormula, setHoveredFormula] = useState<CTLFormula | null>(null);
 
   // Bubble set SVG overlay
@@ -639,6 +640,9 @@ export function CTLModelCheckerTab() {
       setViz(result);
       setError(null);
       setSelectedProps(new Set());
+      if (result.defaultCTLFormulaToCheck !== undefined) {
+        setFormulaText(result.defaultCTLFormulaToCheck);
+      }
     }
   }, [jsonText]);
 
