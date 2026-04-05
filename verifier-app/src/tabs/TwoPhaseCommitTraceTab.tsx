@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import {
   type CounterexampleTrace,
+  type TraceStep,
   parseCounterexampleTrace,
 } from "../types/counterexampleTrace";
 
@@ -64,6 +65,25 @@ interface TimelineRow {
   coord: string;
   workers: Map<number, string>;
   inboxes: Map<number, string>;
+  /** "stem", "loop", or undefined for finite traces. */
+  section?: "stem" | "loop";
+}
+
+/**
+ * Returns a flat array of trace steps annotated with their section.
+ * - Finite traces: all steps have section undefined.
+ * - Lasso traces: stem steps are "stem", loop steps are "loop".
+ */
+function flattenTraceSteps(
+  trace: CounterexampleTrace,
+): { step: TraceStep; section?: "stem" | "loop" }[] {
+  if (trace.kind === "finite") {
+    return trace.path.map((step) => ({ step }));
+  }
+  return [
+    ...trace.stem.map((step) => ({ step, section: "stem" as const })),
+    ...trace.loop.map((step) => ({ step, section: "loop" as const })),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +117,7 @@ export function TwoPhaseCommitTraceTab() {
     if (!trace) return { workerIds: [] as number[], inboxIds: [] as number[] };
     const wIds = new Set<number>();
     const iIds = new Set<number>();
-    for (const step of trace.path) {
+    for (const { step } of flattenTraceSteps(trace)) {
       for (const prop of Object.keys(step.valuation)) {
         const wm = prop.match(/^w(\d+)_/);
         if (wm) wIds.add(parseInt(wm[1]));
@@ -114,21 +134,22 @@ export function TwoPhaseCommitTraceTab() {
   // Build timeline rows
   const rows: TimelineRow[] = useMemo(() => {
     if (!trace) return [];
-    return trace.path.map((step, i) => {
+    return flattenTraceSteps(trace).map(({ step: traceStep, section }, i) => {
       const workers = new Map<number, string>();
       for (const id of workerIds) {
-        workers.set(id, workerState(step.valuation, `w${id}`));
+        workers.set(id, workerState(traceStep.valuation, `w${id}`));
       }
       const inboxes = new Map<number, string>();
       for (const id of inboxIds) {
-        inboxes.set(id, inboxState(step.valuation, `inbox${id}`));
+        inboxes.set(id, inboxState(traceStep.valuation, `inbox${id}`));
       }
       return {
         step: i,
-        stateIndex: step.stateIndex,
-        coord: coordState(step.valuation),
+        stateIndex: traceStep.stateIndex,
+        coord: coordState(traceStep.valuation),
         workers,
         inboxes,
+        section,
       };
     });
   }, [trace, workerIds, inboxIds]);
@@ -254,36 +275,79 @@ export function TwoPhaseCommitTraceTab() {
               {rows.map((row, ri) => {
                 const prev = ri > 0 ? rows[ri - 1] : null;
                 const coordChanged = prev != null && prev.coord !== row.coord;
+                const isLoopStart = row.section === "loop" && prev?.section !== "loop";
+                const isLoopRow = row.section === "loop";
+                const colCount = 3 + workerIds.length + inboxIds.length;
+                const loopRowStyle: React.CSSProperties = isLoopRow
+                  ? { borderLeft: "3px solid #c084fc" }
+                  : {};
                 return (
-                  <tr key={ri}>
-                    <td style={cellStyle("working", false)}>{row.step}</td>
-                    <td style={cellStyle("working", false)}>{row.stateIndex}</td>
-                    <td style={cellStyle(row.coord, coordChanged)}>
-                      {row.coord}
-                    </td>
-                    {workerIds.map((id) => {
-                      const state = row.workers.get(id) ?? "working";
-                      const prevState = prev?.workers.get(id) ?? "working";
-                      const changed = prev != null && prevState !== state;
-                      return (
-                        <td key={`w${id}`} style={cellStyle(state, changed)}>
-                          {state}
+                  <>
+                    {isLoopStart && (
+                      <tr key={`loop-sep-${ri}`}>
+                        <td
+                          colSpan={colCount}
+                          style={{
+                            padding: "4px 12px",
+                            fontSize: 12,
+                            color: "#c084fc",
+                            background: "rgba(192, 132, 252, 0.08)",
+                            borderBottom: "1px solid #3a3a42",
+                            fontFamily: "Martian Mono, monospace",
+                          }}
+                        >
+                          loop starts here
                         </td>
-                      );
-                    })}
-                    {inboxIds.map((id) => {
-                      const state = row.inboxes.get(id) ?? "empty";
-                      const prevState = prev?.inboxes.get(id) ?? "empty";
-                      const changed = prev != null && prevState !== state;
-                      return (
-                        <td key={`inbox${id}`} style={cellStyle(state, changed)}>
-                          {state}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                      </tr>
+                    )}
+                    <tr key={ri} style={loopRowStyle}>
+                      <td style={cellStyle("working", false)}>{row.step}</td>
+                      <td style={cellStyle("working", false)}>{row.stateIndex}</td>
+                      <td style={cellStyle(row.coord, coordChanged)}>
+                        {row.coord}
+                      </td>
+                      {workerIds.map((id) => {
+                        const state = row.workers.get(id) ?? "working";
+                        const prevState = prev?.workers.get(id) ?? "working";
+                        const changed = prev != null && prevState !== state;
+                        return (
+                          <td key={`w${id}`} style={cellStyle(state, changed)}>
+                            {state}
+                          </td>
+                        );
+                      })}
+                      {inboxIds.map((id) => {
+                        const state = row.inboxes.get(id) ?? "empty";
+                        const prevState = prev?.inboxes.get(id) ?? "empty";
+                        const changed = prev != null && prevState !== state;
+                        return (
+                          <td key={`inbox${id}`} style={cellStyle(state, changed)}>
+                            {state}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </>
                 );
               })}
+              {rows.length > 0 && rows[rows.length - 1].section === "loop" && (
+                <tr>
+                  <td
+                    colSpan={3 + workerIds.length + inboxIds.length}
+                    style={{
+                      padding: "4px 12px",
+                      fontSize: 12,
+                      color: "#c084fc",
+                      background: "rgba(192, 132, 252, 0.08)",
+                      borderBottom: "1px solid #3a3a42",
+                      fontFamily: "Martian Mono, monospace",
+                      borderLeft: "3px solid #c084fc",
+                    }}
+                  >
+                    repeats from loop start
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         ) : (

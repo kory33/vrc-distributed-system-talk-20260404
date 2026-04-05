@@ -11,6 +11,8 @@
  * Invariants:
  * - `nodeCount` is a positive integer.
  * - Every index in `transitions` and `valuation` entries is in [0, nodeCount).
+ * - Every state has at least one successor (the transition relation is total).
+ *   This is required for standard CTL path semantics.
  *
  * Note: `transitions` and `valuation` arrays are permitted to contain
  * duplicates. Semantically, duplicates are idempotent (R and V are sets),
@@ -73,6 +75,17 @@ export function parseKripkeStructureJson(
     }
   }
   const transitions = data.transitions as [number, number][];
+
+  // --- totality: every state must have at least one successor ---
+  const hasSuccessor = new Uint8Array(nodeCount);
+  for (const [s] of transitions) {
+    hasSuccessor[s] = 1;
+  }
+  for (let s = 0; s < nodeCount; s++) {
+    if (!hasSuccessor[s]) {
+      return `State ${s} has no successors (sink state). The transition relation must be total for CTL semantics.`;
+    }
+  }
 
   // --- valuation ---
   if (!isObject(data.valuation)) {

@@ -9,7 +9,8 @@ import {
 } from "../types/kripke";
 import { type CTLFormula, parseCTL, formulaToDisplayString } from "../types/ctl";
 import { checkCTL } from "../types/ctlModelChecker";
-import { isInUniversalFragment, generateCounterexampleTrace } from "../types/ctlCounterexample";
+import { isInUniversalFragment, isTraceSupported, generateCounterexampleTrace } from "../types/ctlCounterexample";
+import type { CounterexampleTrace } from "../types/counterexampleTrace";
 import { FormulaVisualizer } from "../components/FormulaVisualizer";
 import { createOutline, type IRectangle, type ILine } from "bubblesets-js";
 import katex from "katex";
@@ -482,8 +483,19 @@ function FormulaSyntaxModal({ onClose }: { onClose: () => void }) {
 // Trace modal
 // ---------------------------------------------------------------------------
 
-function TraceModal({ json, onClose }: { json: string; onClose: () => void }) {
+function traceDescription(trace: CounterexampleTrace): string {
+  if (trace.kind === "finite") {
+    return `Finite trace (${trace.path.length} step${trace.path.length !== 1 ? "s" : ""})`;
+  }
+  const stemLen = trace.stem.length;
+  const loopLen = trace.loop.length;
+  const stemPart = stemLen > 0 ? `stem: ${stemLen} step${stemLen !== 1 ? "s" : ""}` : "no stem";
+  return `Lasso trace (${stemPart}, loop: ${loopLen} step${loopLen !== 1 ? "s" : ""})`;
+}
+
+function TraceModal({ trace, onClose }: { trace: CounterexampleTrace; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const json = useMemo(() => JSON.stringify(trace, null, 2), [trace]);
   return (
     <div
       onClick={onClose}
@@ -515,7 +527,10 @@ function TraceModal({ json, onClose }: { json: string; onClose: () => void }) {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <span style={{ fontWeight: 700, fontSize: 20 }}>Counterexample Trace</span>
+          <div>
+            <span style={{ fontWeight: 700, fontSize: 20 }}>Counterexample Trace</span>
+            <div style={{ fontSize: 13, color: "#aaa", marginTop: 2 }}>{traceDescription(trace)}</div>
+          </div>
           <button
             onClick={onClose}
             style={{
@@ -583,8 +598,10 @@ function FormulaPanel({
   formulaError,
   satMap,
   hoveredFormula,
+  trace: traceData,
   onFormulaTextChange,
   onHover,
+  onTraceChange,
 }: {
   viz: KripkeStructureVisualizationJson;
   formula: CTLFormula | null;
@@ -592,12 +609,14 @@ function FormulaPanel({
   formulaError: string | null;
   satMap: Map<CTLFormula, ReadonlySet<number>> | null;
   hoveredFormula: CTLFormula | null;
+  trace: CounterexampleTrace | null;
   onFormulaTextChange: (text: string) => void;
   onHover: (f: CTLFormula | null) => void;
+  onTraceChange: (t: CounterexampleTrace | null) => void;
 }) {
   const [showSyntax, setShowSyntax] = useState(false);
-  const [traceJson, setTraceJson] = useState<string | null>(null);
   const [panelWidth, setPanelWidth] = useState(680);
+
   const hoveredSat = hoveredFormula && satMap?.get(hoveredFormula);
 
   const handleResizePointerDown = useCallback((e: React.PointerEvent) => {
@@ -691,7 +710,7 @@ function FormulaPanel({
           if (rootSat.size === n) return <span style={{ color: "#8f8" }}>Valid at all {n} states</span>;
           const counterexamples: number[] = [];
           for (let i = 0; i < n; i++) { if (!rootSat.has(i)) counterexamples.push(i); }
-          const canTrace = isInUniversalFragment(formula);
+          const canTrace = isInUniversalFragment(formula) && isTraceSupported(formula);
           return (
             <span style={{ color: "#f88" }}>
               Counterexamples: {"{" + counterexamples.join(", ") + "}"}
@@ -705,7 +724,7 @@ function FormulaPanel({
                       const trace = generateCounterexampleTrace(
                         viz.kripkeStructure, satMap, formula, counterexamples[0],
                       );
-                      if (trace) setTraceJson(JSON.stringify(trace, null, 2));
+                      if (trace) onTraceChange(trace);
                     }}
                     style={{ color: "#7ec8e3", fontSize: 14, textDecoration: "none" }}
                   >
@@ -750,8 +769,8 @@ function FormulaPanel({
         <div style={{ color: "#f88", fontSize: 18 }}>{formulaError}</div>
       )}
       {showSyntax && <FormulaSyntaxModal onClose={() => setShowSyntax(false)} />}
-      {traceJson && (
-        <TraceModal json={traceJson} onClose={() => setTraceJson(null)} />
+      {traceData && (
+        <TraceModal trace={traceData} onClose={() => onTraceChange(null)} />
       )}
     </div>
   );
@@ -773,6 +792,7 @@ export function CTLModelCheckerTab() {
   // CTL formula state
   const [formulaText, setFormulaText] = useState(SAMPLE_JSON.defaultCTLFormulaToCheck ?? "");
   const [hoveredFormula, setHoveredFormula] = useState<CTLFormula | null>(null);
+  const [trace, setTrace] = useState<CounterexampleTrace | null>(null);
 
   // Bubble set SVG overlay
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -792,38 +812,41 @@ export function CTLModelCheckerTab() {
     return { formula: result, formulaError: null };
   }, [formulaText]);
 
-  // Clear hoveredFormula when the formula tree is replaced
-  useEffect(() => {
-    setHoveredFormula(null);
-  }, [formula]);
-
   // Model check
   const satMap = useMemo(() => {
     if (!formula) return null;
     return checkCTL(viz.kripkeStructure, formula);
   }, [viz, formula]);
 
+  // When the formula tree is replaced, hoveredFormula may reference a
+  // subformula from the old tree.  Detect this by checking membership in
+  // satMap (which is keyed by subformulas of the current tree).  Treat an
+  // orphaned hoveredFormula as null so the root-formula branch renders.
+  const validHoveredFormula =
+    hoveredFormula && satMap?.has(hoveredFormula) ? hoveredFormula : null;
+
   // Compute bubble set path for hovered subformula
   const [bubblePath, setBubblePath] = useState<string | null>(null);
 
   const refreshBubblePath = useCallback(() => {
     const cy = cyRef.current;
-    if (!cy || !hoveredFormula || !satMap) {
+    if (!cy || !validHoveredFormula || !satMap) {
       setBubblePath(null);
       return;
     }
-    const sat = satMap.get(hoveredFormula);
+    const sat = satMap.get(validHoveredFormula);
     if (!sat || sat.size === 0) {
       setBubblePath(null);
       return;
     }
     const path = computeBubbleSetPath(cy, sat, viz.kripkeStructure.nodeCount, viz.kripkeStructure.transitions);
     setBubblePath(path);
-  }, [hoveredFormula, satMap, viz.kripkeStructure.nodeCount, viz.kripkeStructure.transitions]);
+  }, [validHoveredFormula, satMap, viz.kripkeStructure.nodeCount, viz.kripkeStructure.transitions]);
 
-  // Recompute bubble path when hover or data changes
+  // Recompute bubble path when hover or data changes.
+  // This reads Cytoscape node positions (external system), so useEffect is correct.
   useEffect(() => {
-    refreshBubblePath();
+    refreshBubblePath(); // eslint-disable-line react-hooks/set-state-in-effect -- syncing with Cytoscape positions
   }, [refreshBubblePath]);
 
   // Sync SVG overlay size with container
@@ -929,6 +952,7 @@ export function CTLModelCheckerTab() {
       setViz(result);
       setError(null);
       setSelectedProps(new Set());
+      setTrace(null);
       if (result.defaultCTLFormulaToCheck !== undefined) {
         setFormulaText(result.defaultCTLFormulaToCheck);
       }
@@ -1076,9 +1100,11 @@ export function CTLModelCheckerTab() {
           formulaText={formulaText}
           formulaError={formulaError}
           satMap={satMap}
-          hoveredFormula={hoveredFormula}
+          hoveredFormula={validHoveredFormula}
+          trace={trace}
           onFormulaTextChange={setFormulaText}
           onHover={setHoveredFormula}
+          onTraceChange={setTrace}
         />
       </div>
     </div>
