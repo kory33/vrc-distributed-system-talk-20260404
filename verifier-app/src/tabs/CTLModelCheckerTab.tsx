@@ -175,6 +175,34 @@ function buildStylesheet(
         "curve-style": "bezier",
       },
     },
+    // Highlight the dragged node with a bright cyan outline
+    {
+      selector: "node.dragged",
+      style: {
+        "border-width": 3,
+        "border-color": "#00e5ff",
+      } as cytoscape.Css.Node,
+    },
+    // Highlight neighbors of the dragged node with a bright orange outline
+    {
+      selector: "node.neighbor-of-dragged",
+      style: {
+        "border-width": 3,
+        "border-color": "#ffab00",
+      } as cytoscape.Css.Node,
+    },
+    // Highlight edges connected to the dragged node, with a mid-arrow
+    // direction indicator (shown only during drag for dense graphs)
+    {
+      selector: "edge.edge-of-dragged",
+      style: {
+        "line-color": "#35b5cc",
+        width: 3,
+        "target-arrow-color": "#35b5cc",
+        "mid-target-arrow-color": "#1d6a88",
+        "mid-target-arrow-shape": "triangle",
+      } as cytoscape.Css.Edge,
+    },
   ];
 }
 
@@ -899,6 +927,20 @@ export function CTLModelCheckerTab() {
       cy.on("mouseout", "node", () => {
         hoveredNodeRef.current = null;
         scheduleHide();
+      });
+
+      // Highlight the dragged node, its neighbors, and connected edges
+      cy.on("grab", "node", (e) => {
+        const node = e.target as cytoscape.NodeSingular;
+        node.addClass("dragged");
+        node.neighborhood("node").addClass("neighbor-of-dragged");
+        node.connectedEdges().addClass("edge-of-dragged");
+      });
+      cy.on("free", "node", (e) => {
+        const node = e.target as cytoscape.NodeSingular;
+        node.removeClass("dragged");
+        node.neighborhood("node").removeClass("neighbor-of-dragged");
+        node.connectedEdges().removeClass("edge-of-dragged");
       });
     },
     [cancelHide, scheduleHide],
